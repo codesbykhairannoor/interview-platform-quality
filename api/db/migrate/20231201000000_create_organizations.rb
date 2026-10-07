@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 class CreateOrganizations < ActiveRecord::Migration[7.0]
-  def change
+  def up
+    execute "CREATE SCHEMA IF NOT EXISTS ai_interview"
+
     create_table :organizations do |t|
       t.string :name,        limit: 255, null: false
       t.string :scheme,      limit: 255, null: false
@@ -16,5 +18,9 @@ class CreateOrganizations < ActiveRecord::Migration[7.0]
 
     add_index :organizations, :scheme, unique: true
     add_index :organizations, :host
+  end
+
+  def down
+    drop_table :organizations
   end
 end
