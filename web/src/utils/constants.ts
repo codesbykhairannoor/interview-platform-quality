@@ -32,6 +32,23 @@ export const LEVEL_BADGE_CLASSES: Record<number, string> = {
   5: "bg-yellow-100 text-yellow-700",
 };
 
+/** Format level badge with bounded safe fallback */
+export function formatLevelBadge(level: string | number): {
+  levelNumber: number;
+  label: string;
+  description: string;
+  badgeClass: string;
+} {
+  const parsed = parseLevel(level);
+  const clamped = Math.max(1, Math.min(5, isNaN(parsed) ? 1 : parsed));
+  return {
+    levelNumber: clamped,
+    label: LEVEL_LABELS[clamped] || "L1",
+    description: LEVEL_DESCRIPTIONS[clamped] || "Foundational",
+    badgeClass: LEVEL_BADGE_CLASSES[clamped] || LEVEL_BADGE_CLASSES[1],
+  };
+}
+
 // Coverage state display
 export const COVERAGE_STATE_LABELS: Record<string, string> = {
   not_yet: "not yet",
