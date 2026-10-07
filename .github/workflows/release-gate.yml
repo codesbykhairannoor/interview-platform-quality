@@ -1,0 +1,87 @@
+name: Release Quality Gate
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  validate-release:
+    name: Verify Release Quality Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify Release Notes Exist
+        id: check-notes
+        run: |
+          if [ -f "RELEASE_NOTES.md" ] || [ -f "CHANGELOG.md" ]; then
+            echo "notes_present=true" >> $GITHUB_OUTPUT
+            echo "Release notes verified."
+          else
+            echo "notes_present=false" >> $GITHUB_OUTPUT
+            echo "ERROR: RELEASE_NOTES.md or CHANGELOG.md is missing!"
+            exit 1
+          fi
+
+      - name: Verify Release Decision Document Exists
+        id: check-decision
+        run: |
+          if [ -f "assessment/03-release-decision.md" ]; then
+            echo "decision_present=true" >> $GITHUB_OUTPUT
+            echo "Release decision document verified."
+          else
+            echo "decision_present=false" >> $GITHUB_OUTPUT
+            echo "ERROR: assessment/03-release-decision.md is missing!"
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Run Web Quality Suite
+        working-directory: web
+        run: |
+          npm ci --legacy-peer-deps
+          npm run build
+          npm test
+
+  gate-status:
+    name: Surface Release Status
+    needs: [validate-release]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Report Clear Release Status
+        run: |
+          if [ "${{ needs.validate-release.result }}" = "success" ]; then
+            echo "============================================================"
+            echo "          RELEASE STATUS: RELEASABLE (GREEN)                "
+            echo "============================================================"
+            echo "Tag: ${{ github.ref_name }}"
+            echo "Status: RELEASABLE"
+            echo "All automated regression tests passed and release inputs are verified."
+            echo "============================================================"
+            echo "###  Release Status: **RELEASABLE** " >> $GITHUB_STEP_SUMMARY
+            echo "**Tag**: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "**Verdict**: All quality gates, regression suites, and release documentation passed." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "============================================================"
+            echo "          RELEASE STATUS: BLOCKED (RED)                     "
+            echo "============================================================"
+            echo "Tag: ${{ github.ref_name }}"
+            echo "Status: BLOCKED"
+            echo "One or more release quality gates failed. Deployment is held."
+            echo "============================================================"
+            echo "###  Release Status: **BLOCKED** " >> $GITHUB_STEP_SUMMARY
+            echo "**Tag**: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "**Verdict**: Quality gate failure detected. This release is blocked from shipping." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
