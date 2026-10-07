@@ -47,6 +47,18 @@ export default function CustomSkillForm({ index, form }: CustomSkillFormProps) {
         />
       </div>
 
+      <div className="space-y-1.5">
+        <Label htmlFor={`skills.${index}.scope_exclude`}>
+          What does NOT count (scope exclude)
+        </Label>
+        <Textarea
+          id={`skills.${index}.scope_exclude`}
+          placeholder="e.g. Reciting memorized definitions without applied context..."
+          rows={2}
+          {...register(`skills.${index}.scope_exclude`)}
+        />
+      </div>
+
       <div className="space-y-2">
         {(["l1_anchor", "l2_anchor", "l3_anchor", "l4_anchor", "l5_anchor"] as const).map((key, i) => (
           <div key={key} className="space-y-1">

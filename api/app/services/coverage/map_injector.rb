@@ -34,7 +34,7 @@ module Coverage
         skills_remaining:                skills_left,
         avg_minutes_per_remaining_skill: avg_min,
         pacing:                          pacing_bucket(avg_min),
-        priority_next:                   priority_next(configured)
+        priority_next:                   priority_next(configured, discovered)
       }
 
       Rails.logger.info("[MapInjector] Coverage map: skills_remaining=#{skills_left} avg_min=#{avg_min} pacing=#{pacing_bucket(avg_min)} priority_next=#{payload[:priority_next]}")
@@ -101,7 +101,12 @@ module Coverage
 
     # Returns the skill_id/label of the highest-priority uncovered skill.
     # Priority: not_yet > initiated > partial > discovered > covered
-    def priority_next(configured_maps)
+    def priority_next(configured_maps, discovered_maps = [])
+      # PRD 01 Section 5: Unprompted discovered skill requires brief probe before returning to agenda
+      if discovered_maps.any? { |m| m.state == 'initiated' }
+        return 'discovered'
+      end
+
       priority_order = %w[not_yet initiated partial covered]
 
       best = configured_maps
