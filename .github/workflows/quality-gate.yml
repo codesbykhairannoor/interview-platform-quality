@@ -24,8 +24,10 @@ jobs:
       - name: Verify Definition of Ready Inputs
         run: node scripts/verify-pr-dor.js
         env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_REF: ${{ github.base_ref || 'origin/main' }}
 
   test-web:
     name: Frontend Test Net (Web)

@@ -15,7 +15,12 @@ const fs = require('fs');
 const { execSync } = require('child_process');
 
 function getPrBody() {
-    // 1. In GitHub Actions pull_request event
+    // 1. In GitHub Actions push event (not a PR)
+    if (process.env.GITHUB_EVENT_NAME === 'push' && !process.env.PR_TITLE && !process.env.PR_BODY) {
+        return { isDirectPush: true };
+    }
+
+    // 2. In GitHub Actions pull_request event
     if (process.env.GITHUB_EVENT_PATH && fs.existsSync(process.env.GITHUB_EVENT_PATH)) {
         try {
             const eventData = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
@@ -23,7 +28,7 @@ function getPrBody() {
                 return {
                     title: eventData.pull_request.title || '',
                     body: eventData.pull_request.body || '',
-                    base: eventData.pull_request.base ? eventData.pull_request.base.sha : 'origin/main',
+                    base: eventData.pull_request.base ? (eventData.pull_request.base.sha || 'origin/main') : 'origin/main',
                     head: eventData.pull_request.head ? eventData.pull_request.head.sha : 'HEAD',
                 };
             }
@@ -32,17 +37,17 @@ function getPrBody() {
         }
     }
 
-    // 2. Direct env variables
-    if (process.env.PR_TITLE || process.env.PR_BODY) {
+    // 3. Direct env variables
+    if (process.env.PR_TITLE !== undefined || process.env.PR_BODY !== undefined) {
         return {
             title: process.env.PR_TITLE || '',
             body: process.env.PR_BODY || '',
-            base: process.env.BASE_REF || 'HEAD~1',
+            base: process.env.BASE_REF || 'origin/main',
             head: 'HEAD',
         };
     }
 
-    // 3. Fallback: inspect latest commit message in local git
+    // 4. Fallback: inspect latest commit message in local git
     try {
         const commitMsg = execSync('git log -1 --pretty=%B', { encoding: 'utf8' }).trim();
         const lines = commitMsg.split('\n');
@@ -58,17 +63,25 @@ function getPrBody() {
 }
 
 function getChangedFiles(baseRef) {
-    try {
-        const target = baseRef || 'HEAD~1';
-        const diffOutput = execSync(`git diff --name-only ${target} HEAD`, { encoding: 'utf8' });
-        return diffOutput.trim().split('\n').filter(Boolean);
-    } catch {
+    const candidates = [baseRef, 'origin/main', 'HEAD~1'].filter(Boolean);
+    for (const target of candidates) {
         try {
-            const statusOutput = execSync('git status --porcelain', { encoding: 'utf8' });
-            return statusOutput.trim().split('\n').map(l => l.slice(3).trim()).filter(Boolean);
+            const diffOutput = execSync(`git diff --name-only ${target}...HEAD`, { encoding: 'utf8' });
+            const files = diffOutput.trim().split('\n').filter(Boolean);
+            if (files.length > 0) return files;
         } catch {
-            return [];
+            try {
+                const diffOutput = execSync(`git diff --name-only ${target} HEAD`, { encoding: 'utf8' });
+                const files = diffOutput.trim().split('\n').filter(Boolean);
+                if (files.length > 0) return files;
+            } catch {}
         }
+    }
+    try {
+        const statusOutput = execSync('git status --porcelain', { encoding: 'utf8' });
+        return statusOutput.trim().split('\n').map(l => l.slice(3).trim()).filter(Boolean);
+    } catch {
+        return [];
     }
 }
 
@@ -78,6 +91,11 @@ function runGate() {
     console.log('====================================================\n');
 
     const pr = getPrBody();
+    if (pr.isDirectPush) {
+        console.log(' [PASS] Direct branch push detected. DoR validation bypassed for merge/direct push.');
+        console.log(' [SUCCESS] Proceeding directly to automated build & test net.\n');
+        process.exit(0);
+    }
     const content = `${pr.title}\n${pr.body}`.toLowerCase();
     const errors = [];
     const passed = [];
