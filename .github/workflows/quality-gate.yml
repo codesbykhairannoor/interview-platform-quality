@@ -100,24 +100,25 @@ jobs:
       - name: Setup Test Database
         env:
           RAILS_ENV: test
-          DB_HOST: localhost
+          DB_HOST: 127.0.0.1
           DB_PORT: 5432
           DB_USERNAME: postgres
           DB_PASSWORD: password
           DB_NAME: rakamin_test
-          REDIS_URL: redis://localhost:6379/1
+          REDIS_URL: redis://127.0.0.1:6379/1
           SECRET_KEY_BASE: test_secret_key_base_for_ci_quality_net_1234567890
         run: |
-          bundle exec rails db:create db:migrate
+          PGPASSWORD=password psql -h 127.0.0.1 -U postgres -d rakamin_test -c "CREATE SCHEMA IF NOT EXISTS ai_interview;" || true
+          bundle exec rails db:migrate || bundle exec rails db:schema:load
 
       - name: Run RSpec Tests
         env:
           RAILS_ENV: test
-          DB_HOST: localhost
+          DB_HOST: 127.0.0.1
           DB_PORT: 5432
           DB_USERNAME: postgres
           DB_PASSWORD: password
           DB_NAME: rakamin_test
-          REDIS_URL: redis://localhost:6379/1
+          REDIS_URL: redis://127.0.0.1:6379/1
           SECRET_KEY_BASE: test_secret_key_base_for_ci_quality_net_1234567890
         run: bundle exec rspec
