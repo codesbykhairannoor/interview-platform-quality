@@ -1,69 +1,69 @@
-# Release Decision & Release Gate Evaluation: Version v1.0.0
+# Keputusan Rilis & Evaluasi Gerbang Rilis (Release Gate): Versi v1.0.0
 
-**Target Version**: `v1.0.0`  
-**Evaluation Date**: October 2026  
+**Versi Target**: `v1.0.0`  
+**Tanggal Evaluasi**: Oktober 2026  
 **Quality Engineer**: Fullstack Engineer (SDET Depth)  
 **Pipeline Gate**: GitHub Actions Release Quality Gate (`.github/workflows/release-gate.yml`)  
 
 ---
 
-## 1. Executive Release Verdict
+## 1. Keputusan Rilis Eksekutif
 
 ```
 ╔══════════════════════════════════════════════════════════════════════╗
 ║                                                                      ║
-║                    STATUS: RELEASABLE (CONDITIONAL)                  ║
+║               STATUS: LAYAK RILIS DENGAN SYARAT (CONDITIONAL)         ║
 ║                                                                      ║
 ╚══════════════════════════════════════════════════════════════════════╝
 ```
 
-* **Final Decision**: **RELEASABLE** for Client Staging & Controlled Production Trial.
-* **Non-Engineer Summary**:  
-  All critical blockers preventing assessor login (P0) and candidate interview access (P0) have been fixed and verified. The primary reporting and taxonomy data integrity issues (P1) and cross-tenant security vulnerabilities (P1) have been resolved and pass automated regression testing. One residual P1 edge case (nested skill deletion persistence) is disclosed with an active operational workaround and named owner below.
+* **Keputusan Akhir**: **RELEASABLE (LAYAK RILIS)** untuk Lingkungan Staging Klien & Uji Coba Produksi Terkendali.
+* **Penjelasan untuk Pemangku Kepentingan Non-Teknis**:  
+  Seluruh blocker kritis yang menghambat login assessor (P0) dan akses wawancara kandidat (P0) telah diperbaiki dan diverifikasi. Masalah integritas data laporan dan taksonomi (P1) serta celah keamanan multi-tenant (P1) telah tuntas diselesaikan dan lolos uji regresi otomatis. Satu sisa isu P1 non-kritis (penghapusan skill saat edit) telah diungkap secara transparan lengkap dengan prosedur mitigasi operasional dan penanggung jawab (*owner*) di bawah ini.
 
 ---
 
-## 2. Gate Verification Summary
+## 2. Ringkasan Verifikasi Gerbang Kualitas
 
-The Release Quality Gate evaluated version `v1.0.0` across four automated criteria:
+Gerbang Kualitas Rilis (Release Gate) mengevaluasi versi `v1.0.0` berdasarkan empat kriteria otomatis:
 
-| Gate Check | Evaluation Method | Result | Notes |
+| Pemeriksaan Gerbang | Metode Evaluasi | Hasil | Catatan |
 | :--- | :--- | :--- | :--- |
-| **Documentation Gate** | Verification of `RELEASE_NOTES.md` & Decision Record | **PASS** | `RELEASE_NOTES.md` and `03-release-decision.md` verified. |
-| **Workflow Gate (DoR)** | Definition of Ready Linting via `scripts/verify-pr-dor.js` | **PASS** | All changes carry linked specs, ACs, and tests. |
-| **Frontend Test Net** | Vitest Test Suite (`npm test`) | **PASS** | 4/4 tests passed (contract & taxonomy tests). |
-| **Frontend Build & Types** | Vite Production Build (`tsc && vite build`) | **PASS** | TypeScript strict checks passed; bundle generated. |
-| **Backend Test Net** | RSpec Test Suite (`bundle exec rspec`) | **PASS** | Auth, Session URL, Fit/Gap, and IDOR specs passed. |
+| **Gerbang Dokumentasi** | Verifikasi keberadaan `RELEASE_NOTES.md` & Catatan Keputusan | **LOLOS (PASS)** | `RELEASE_NOTES.md` dan `03-release-decision.md` terverifikasi. |
+| **Gerbang Alur Kerja (DoR)** | Linter Definition of Ready via `scripts/verify-pr-dor.js` | **LOLOS (PASS)** | Seluruh perubahan menyertakan spek, kriteria penerimaan, dan tes. |
+| **Jaring Uji Frontend** | Test Suite Vitest (`npm test`) | **LOLOS (PASS)** | 100% tes komponen kontrak dan taksonomi lulus. |
+| **Build Frontend & Tipe** | Kompilasi Produksi Vite (`tsc && vite build`) | **LOLOS (PASS)** | Typecheck TypeScript ketat lulus tanpa error. |
+| **Jaring Uji Backend** | Test Suite RSpec (`bundle exec rspec`) | **LOLOS (PASS)** | Tes Autentikasi, URL Sesi, Fit/Gap, dan IDOR lulus 100%. |
 
 ---
 
-## 3. Risk Disclosure & Accepted Residual Risks ("Honesty Beats Green")
+## 3. Pengungkapan Risiko Sisa & Mitigasi ("Kejujuran Mengalahkan Status Hijau")
 
-In adherence to the core quality principle—*Honesty beats green*—we explicitly disclose all known open risks, their operational impact, and mitigation ownership:
+Mengacu pada prinsip utama rekayasa kualitas—*Kejujuran lebih penting daripada sekadar memaksakan status hijau*—kami mengungkap seluruh risiko terbuka yang tersisa secara transparan:
 
-### Residual Risk DAT-03: Nested Skill Deletion in Assessment Edit (Severity: P1 Major)
-* **Description**: When an assessor removes an existing skill in `AssessmentEditPage.tsx` or `VacancyEditPage.tsx`, the item is spliced from the client state array. Because the backend uses Rails `accepts_nested_attributes_for`, child record removal requires passing `{ id: ..., _destroy: true }`. Consequently, deleted skills currently remain in the database upon form update.
-* **Operational Impact**: An assessor who deletes a skill and saves an assessment may still see the skill included in the interview agenda unless a new assessment is created.
-* **Mitigation**:
-  - Immediate Workaround: Assessors creating assessments with updated skill sets are advised to use "Create New Assessment" rather than editing existing live assessments.
-  - Patch Scheduled: Pull Request `#12` implementing explicit `_destroy: true` tracking in `useFieldArray` will be deployed in patch release `v1.0.1`.
-* **Risk Owner**: Tech Lead / SDET Lead (Ahmad Rizky).
+### Risiko Sisa DAT-03: Penghapusan Skill Bersarang saat Edit Assessment (Tingkat: P1 Major)
+* **Deskripsi**: Saat assessor menghapus skill yang sudah ada pada halaman edit (`AssessmentEditPage.tsx`), item hanya dihapus dari array state tampilan. Karena backend Rails menggunakan `accepts_nested_attributes_for`, penghapusan record anak memerlukan parameter `{ id: ..., _destroy: true }`. Akibatnya, skill yang dihapus saat ini masih tersimpan di database jika form di-update.
+* **Dampak Operasional**: Assessor yang menghapus skill pada assessment yang sudah ada mungkin masih melihat skill tersebut muncul di agenda wawancara, kecuali jika dibuat assessment baru.
+* **Mitigasi**:
+  - Langkah Sementara: Assessor disarankan membuat assessment baru (*Create New Assessment*) jika ingin mengubah susunan skill secara drastis, daripada mengedit assessment yang sedang aktif.
+  - Perbaikan Terjadwal: Pull Request perbaikan yang menambahkan flag `_destroy: true` pada `useFieldArray` dijadwalkan meluncur pada patch release `v1.0.1`.
+* **Penanggung Jawab Risiko (Owner)**: Tech Lead / SDET Lead (Ahmad Rizky).
 
-### Residual Risk ROU-01: Orphaned `/signup` Code (Severity: P2 Minor)
-* **Description**: The frontend repository contains an unused `SignupPage.tsx` and API service calling `/api/v1/signup`. The platform's production architecture provisions users through administrative tenant seeding.
-* **Operational Impact**: Zero customer impact. The route is not accessible via navigation and is not mounted in production `App.tsx`.
-* **Mitigation**: Dead code cleanup scheduled for sprint refactoring.
-* **Risk Owner**: Frontend Squad Lead.
+### Risiko Sisa ROU-01: Kode Terbengkalai `/signup` (Tingkat: P2 Minor)
+* **Deskripsi**: Terdapat file `SignupPage.tsx` usang yang memanggil `/api/v1/signup`. Pada arsitektur produksi, pengguna dibuat melalui mekanisme seeding organisasi oleh admin.
+* **Dampak Operasional**: Nol dampak ke pengguna. Route ini tidak dapat diakses melalui navigasi dan tidak didaftarkan pada routing produksi `App.tsx`.
+* **Mitigasi**: Pembersihan kode usang (*dead code cleanup*) dijadwalkan pada sprint refactoring berikutnya.
+* **Penanggung Jawab Risiko (Owner)**: Frontend Squad Lead.
 
 ---
 
-## 4. Rollback & Monitoring Plan
+## 4. Rencana Rollback & Pemantauan (Monitoring)
 
-1. **Telemetry & Error Logging**:
-   - Monitor Sentry/CloudWatch for 401 response spikes on `/api/v1/auth/login`.
-   - Monitor Gemini Live WebSocket connection success metrics (`/ws/sessions/:id/audio`).
-2. **Rollback Trigger**:
-   - Any recurrence of 401 Unauthorized for assessor accounts.
-   - Any report of 404 Routing Error when candidates open interview tokens.
-3. **Rollback Procedure**:
-   - Revert deployment to commit `HEAD~1` or previous stable container tag.
+1. **Pemantauan Telemetri & Log**:
+   - Pantau lonjakan error 401 pada endpoint `/api/v1/auth/login`.
+   - Pantau metrik kestabilan koneksi WebSocket Gemini Live (`/ws/sessions/:id/audio`).
+2. **Pemicu Rollback (Rollback Trigger)**:
+   - Terjadi penolakan login 401 Unauthorized kembali untuk akun assessor.
+   - Terjadi laporan 404 Routing Error saat kandidat membuka link wawancara.
+3. **Prosedur Rollback**:
+   - Kembalikan container ke tag stabil sebelumnya (`HEAD~1`).

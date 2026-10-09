@@ -1,67 +1,69 @@
-# Platform Quality & Architectural Audit
+# Audit Kualitas & Arsitektur Platform
 
-**Target Platform**: AI Interview Platform (`api/` Ruby on Rails + `web/` React 18 / TypeScript)  
+**Target Platform**: Platform AI Interview (`api/` Ruby on Rails + `web/` React 18 / TypeScript)  
 **Assessor**: Fullstack Engineer (SDET Depth)  
-**Date**: October 2026  
-**Status**: Comprehensive Baseline Audit & Remediation Tracking  
+**Tanggal**: Oktober 2026  
+**Status**: Audit Baseline Komprehensif & Pelacakan Remediasi Bug  
 
 ---
 
-## Executive Summary & Ship / Do-Not-Ship Line
+## Ringkasan Eksekutif & Garis Batas Rilis (Ship / Do-Not-Ship Line)
 
-The AI Interview Platform is a two-tier service designed to conduct autonomous, real-time voice interviews using Gemini Live and evaluate candidate competencies against standardized level anchors (L1–L5). 
+Platform AI Interview adalah layanan dua tingkat (*two-tier*) yang dirancang untuk menjalankan wawancara suara real-time secara otonom menggunakan Gemini Live serta mengevaluasi kompetensi kandidat terhadap standar anchor level (L1–L5).
 
-A rigorous audit of the codebase, contracts, data persistence, and development workflows revealed **severe systemic vulnerabilities** living in the seam between the frontend and backend, as well as broken access control gates upstream:
-1. **P0 Blocker**: Assessor authentication was fundamentally broken—the authentication controller strictly enforced `user.role == 'admin'`, causing all users with the primary role `assessor` to be rejected with HTTP 401.
-2. **P0 Blocker**: The generated candidate interview links directed candidates to the API port (`http://localhost:3001/interview/:token`), producing a 404 Routing Error instead of serving the candidate web application on port 5173.
-3. **P1 Major**: The Fit/Gap analysis report suffered from a contract attribute mismatch (`expected_level` vs `required_level`) and dropped the `is_override` flag, causing the frontend comparison table to render blank required levels and hide assessor override indicators.
-4. **P1 Major**: Selecting any standardized skill from the B7 taxonomy stripped the `skill_id` attribute to `undefined`, severing traceability back to the taxonomy.
-5. **P1 Major**: Portfolio endpoints lacked tenant isolation, allowing authenticated assessors from Tenant A to view, export, and trigger fit/gap reports for candidates in Tenant B (IDOR).
+Audit mendalam terhadap basis kode, kontrak data, persistensi, dan alur kerja pengembangan mengungkap **kerentanan sistemik yang parah** pada pertemuan (*seam*) antara frontend dan backend, serta kontrol akses hulu yang rusak:
 
-### The Ship / Do-Not-Ship Line
-> **DO-NOT-SHIP THRESHOLD**:  
-> No release can be shipped if any P0 (system unusable) or P1 (data integrity corrupted / silent failure / multi-tenant leakage) issue is open without explicit, board-approved risk acceptance. The initial codebase fell significantly below the ship line. Following the fixes implemented in this assessment cycle, all identified P0 and P1 defects have been resolved and verified with automated regression checks.
+1. **P0 Blocker**: Autentikasi assessor rusak secara fundamental—controller autentikasi secara kaku hanya memvalidasi `user.role == 'admin'`, sehingga seluruh pengguna dengan role utama `assessor` ditolak dengan status HTTP 401 Unauthorized.
+2. **P0 Blocker**: Link undangan wawancara kandidat mengarahkan pengguna ke port API Rails (`http://localhost:3001/interview/:token`), memicu pesan kesalahan 404 Routing Error alih-alih membuka aplikasi web kandidat pada port 5173.
+3. **P1 Major**: Laporan analisis Fit/Gap mengalami ketidakcocokan atribut kontrak (`expected_level` vs `required_level`) serta menghilangkan flag `is_override`, menyebabkan tabel perbandingan di frontend menampilkan kolom level kebutuhan yang kosong dan menyembunyikan indikator override asesor.
+4. **P1 Major**: Pemilihan skill standar dari taksonomi B7 membuang atribut `skill_id` menjadi `undefined`, memutus keterlacakan (*traceability*) ke taksonomi sumber.
+5. **P1 Major**: Endpoint portfolio tidak memiliki isolasi tenant, memungkinkan asesor terautentikasi dari Perusahaan A melihat, mengekspor, dan memicu laporan kandidat milik Perusahaan B (kerentanan IDOR / Multi-Tenant Leakage).
+
+### Garis Batas Rilis (The Ship / Do-Not-Ship Line)
+> **AMBANG BATAS DO-NOT-SHIP (JANGAN RILIS)**:  
+> Tidak ada rilis yang boleh diluncurkan jika masih ada isu **P0** (sistem tidak dapat digunakan sama sekali) atau **P1** (integritas data rusak / kegagalan diam-diam / kebocoran multi-tenant) yang belum terselesaikan tanpa persetujuan mitigasi eksplisit.  
+> Basis kode awal berada jauh di bawah standar layak rilis. Melalui perbaikan menyeluruh dalam siklus penilaian ini, seluruh cacat P0 dan P1 yang teridentifikasi telah diselesaikan dan diverifikasi dengan uji regresi otomatis.
 
 ---
 
-## Severity-Ranked Risk Register
+## Registrasi Risiko Berdasarkan Peringkat Keparahan (Severity-Ranked)
 
-| ID | Title | Severity | Category | Impact | Status |
+| ID | Judul Temuan | Tingkat Keparahan | Kategori | Dampak Bisnis | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **SEC-01** | Assessor Login Rejected (`user.role == 'admin'` constraint) | **P0 Blocker** | Built Wrong | Assessors cannot log into the platform; core workflow halted. | **FIXED** |
-| **INT-01** | Candidate Invite URL Points to API Port (3001) Instead of Web (5173) | **P0 Blocker** | Built Wrong | Candidates receive broken invite links resulting in 404 error. | **FIXED** |
-| **DAT-01** | Fit/Gap Key Mismatch (`expected_level` vs `required_level`) & Missing `is_override` | **P1 Major** | Built Wrong | Comparison table shows blank "Required" column and hides override pencil. | **FIXED** |
-| **DAT-02** | SkillPicker Drops `skill_id` (Explicitly Set to `undefined`) | **P1 Major** | Built Wrong | Selected B7 taxonomy skills lose taxonomy ID, breaking downstream matching. | **FIXED** |
-| **SEC-02** | Unscoped Portfolio Endpoints (Multi-Tenant IDOR) | **P1 Major** | Built Wrong | Assessors can view and export candidate portfolios across tenant boundaries. | **FIXED** |
-| **DAT-03** | Missing Nested Deletion (`_destroy`) on Skill Updates | **P1 Major** | Built Wrong | Deleted skills are never purged from database on assessment/vacancy edit. | **REMAINING (Workaround Documented)** |
-| **LLM-01** | Discovered Skills Excluded from Priority Nudge (`priority_next`) | **P2 Minor** | Built Wrong | AI does not receive priority nudge to probe unscripted candidate claims. | **FIXED** |
-| **UI-01** | Missing `scope_exclude` Input in `CustomSkillForm.tsx` | **P2 Minor** | Missing Spec | Assessors cannot define "What does not count" for custom skills. | **FIXED** |
-| **ROU-01** | Orphaned `/signup` Route in Frontend Service | **P2 Minor** | Built Wrong | Dead signup code references non-existent backend endpoint. | **REMAINING (Deferred)** |
-| **UX-01** | Global 401 Interceptor Redirects Candidates to `/login` | **P3 Cosmetic** | Built Wrong | Expired candidate tokens trigger redirection to assessor login screen. | **REMAINING (Deferred)** |
+| **SEC-01** | Login Assessor Ditolak (Batasan kaku `user.role == 'admin'`) | **P0 Blocker** | Salah Bangun (*Built Wrong*) | Assessor tidak dapat masuk platform; alur kerja utama terhenti total. | **FIXED (Tuntas)** |
+| **INT-01** | URL Undangan Kandidat Mengarah ke Port API (3001) Bukan Web (5173) | **P0 Blocker** | Salah Bangun (*Built Wrong*) | Kandidat menerima link rusak yang menghasilkan pesan 404 Routing Error. | **FIXED (Tuntas)** |
+| **DAT-01** | Kontrak Fit/Gap Tidak Cocok (`expected_level` vs `required_level`) & `is_override` Hilang | **P1 Major** | Salah Bangun (*Built Wrong*) | Tabel perbandingan menampilkan kolom "Required" kosong dan ikon pensil override hilang. | **FIXED (Tuntas)** |
+| **DAT-02** | SkillPicker Menghapus `skill_id` (Dipaksa Menjadi `undefined`) | **P1 Major** | Salah Bangun (*Built Wrong*) | Skill taksonomi B7 kehilangan ID unik, merusak pencocokan data otomatis ke hilir. | **FIXED (Tuntas)** |
+| **SEC-02** | Endpoint Portfolio Tanpa Batasan Tenant (Kerentanan IDOR) | **P1 Major** | Salah Bangun (*Built Wrong*) | Assessor dapat melihat dan mengekspor portfolio kandidat lintas organisasi/tenant. | **FIXED (Tuntas)** |
+| **DAT-03** | Penghapusan Bersarang (`_destroy`) Hilang pada Pembaruan Skill | **P1 Major** | Salah Bangun (*Built Wrong*) | Skill yang dihapus di UI tidak terhapus di database saat assessment/vacancy diedit. | **REMAINING (Mitigasi Dicatat)** |
+| **LLM-01** | Discovered Skills Tidak Masuk Dorongan Prioritas (`priority_next`) | **P2 Minor** | Salah Bangun (*Built Wrong*) | AI tidak menerima arahan prioritas untuk mendalami skill baru yang diungkap kandidat. | **FIXED (Tuntas)** |
+| **UI-01** | Input `scope_exclude` Hilang pada Form `CustomSkillForm.tsx` | **P2 Minor** | Spek Kurang (*Missing Spec*) | Assessor tidak dapat menentukan batasan "Apa yang tidak termasuk" untuk skill kustom. | **FIXED (Tuntas)** |
+| **ROU-01** | Route `/signup` Terbengkalai di Frontend | **P2 Minor** | Salah Bangun (*Built Wrong*) | Kode registrasi usang mengarah ke endpoint backend yang tidak pernah ada. | **REMAINING (Ditunda)** |
+| **UX-01** | Interceptor Global 401 Mengalihkan Kandidat ke Halaman `/login` | **P3 Cosmetic** | Salah Bangun (*Built Wrong*) | Token kandidat yang kedaluwarsa me-redirect kandidat ke halaman login assessor. | **REMAINING (Ditunda)** |
 
 ---
 
-## Detailed Findings & Repro Steps
+## Rincian Temuan & Langkah Reproduksi
 
-### 1. SEC-01: Assessor Login Rejection (P0 Blocker)
-* **Category**: Built Wrong
-* **Location**: `api/app/controllers/api/v1/authentication_controller.rb:14` & `api/app/models/user.rb:6`
-* **One-Line Impact**: Assessors cannot log in; system rejects valid assessor credentials with 401 Unauthorized.
-* **Evidence & Repro**:
+### 1. SEC-01: Penolakan Login Assessor (P0 Blocker)
+* **Kategori**: Salah Bangun (*Built Wrong*)
+* **Lokasi**: `api/app/controllers/api/v1/authentication_controller.rb:14` & `api/app/models/user.rb:6`
+* **Dampak Ringkas**: Assessor tidak dapat masuk; sistem menolak kredensial assessor yang sah dengan status 401 Unauthorized.
+* **Bukti & Reproduksi**:
   ```ruby
   # authentication_controller.rb
   return json_error('Invalid email or password', :unauthorized) unless user.role == 'admin'
   ```
-  While `AuthorizeApiRequest::ASSESSOR_ROLES = %w[admin assessor]` and controllers mandate `authorize_auth_token! :assessor`, the login endpoint strictly required `user.role == 'admin'`. Furthermore, `User::ROLES` only included `admin` and `user`.
-* **Fix Applied**: Added `'assessor'` to `User::ROLES` and updated `AuthenticationController#authenticate` to allow `%w[admin assessor].include?(user.role)`. Verified with `spec/requests/api/v1/authentication_spec.rb`.
+  Padahal `AuthorizeApiRequest::ASSESSOR_ROLES = %w[admin assessor]` dan controller lain mewajibkan `authorize_auth_token! :assessor`. Namun endpoint login secara kaku mengharuskan `user.role == 'admin'`. Selain itu, `User::ROLES` hanya mendefinisikan role `admin` dan `user`.
+* **Solusi yang Diterapkan**: Menambahkan `'assessor'` ke dalam konstanta `User::ROLES` dan memperbarui `AuthenticationController#authenticate` agar mengizinkan `%w[admin assessor].include?(user.role)`. Diverifikasi dengan test `spec/requests/api/v1/authentication_spec.rb`.
 
 ---
 
-### 2. INT-01: Candidate Invite URL Points to API Port 3001 (P0 Blocker)
-* **Category**: Built Wrong
-* **Location**: `api/app/models/session.rb:29`
-* **One-Line Impact**: Candidates clicking the interview invite link hit the Rails API and get a 404 Routing Error instead of the interview web app.
-* **Evidence & Repro**:
+### 2. INT-01: URL Undangan Kandidat Mengarah ke Port API 3001 (P0 Blocker)
+* **Kategori**: Salah Bangun (*Built Wrong*)
+* **Lokasi**: `api/app/models/session.rb:29`
+* **Dampak Ringkas**: Kandidat yang mengklik link undangan akan membuka server API Rails dan mendapat error 404 Routing Error, bukan membuka aplikasi web wawancara.
+* **Bukti & Reproduksi**:
   ```ruby
   # session.rb
   def invite_url
@@ -69,91 +71,89 @@ A rigorous audit of the codebase, contracts, data persistence, and development w
     "#{base}/interview/#{invite_token}"
   end
   ```
-  Rails serves API endpoints on port 3001 without an `/interview/:token` route. The frontend Vite app runs on port 5173.
-* **Fix Applied**: Updated `session.rb` to default to `ENV['WEB_BASE_URL'] || ENV['APP_BASE_URL'] || 'http://localhost:5173'`. Verified with `spec/models/session_spec.rb`.
+  Rails berjalan pada port 3001 tanpa route `/interview/:token`. Aplikasi antarmuka kandidat berada di port 5173 (Vite).
+* **Solusi yang Diterapkan**: Memperbarui default fallback di `session.rb` menjadi `ENV['WEB_BASE_URL'] || ENV['APP_BASE_URL'] || 'http://localhost:5173'`. Diverifikasi dengan test `spec/models/session_spec.rb`.
 
 ---
 
-### 3. DAT-01: Fit/Gap Comparison Contract Mismatch & Dropped Override Flag (P1 Major)
-* **Category**: Built Wrong (Seam Defect)
-* **Location**: `api/app/services/fit_gap/engine.rb:62` vs `web/src/components/fitgap/ComparisonTable.tsx:50`
-* **One-Line Impact**: Assessors see an empty "Required" level column and no visual indicator when an AI score has been manually overridden.
-* **Evidence & Repro**:
-  Backend `FitGap::Engine#build_skill_comparisons` returned:
+### 3. DAT-01: Mismatch Kontrak Fit/Gap & Hilangnya Flag Override (P1 Major)
+* **Kategori**: Salah Bangun / Defect Antarmuka (*Seam Defect*)
+* **Lokasi**: `api/app/services/fit_gap/engine.rb:62` vs `web/src/components/fitgap/ComparisonTable.tsx:50`
+* **Dampak Ringkas**: Assessor melihat kolom level "Required" kosong dan tidak ada penanda visual ketika skor AI telah di-override secara manual.
+* **Bukti & Reproduksi**:
+  Backend `FitGap::Engine#build_skill_comparisons` mengembalikan payload:
   ```ruby
   { skill_label: label, skill_id: ..., candidate_level: ..., expected_level: expected_level, result: result }
   ```
-  The frontend `ComparisonTable.tsx` expected `c.required_level`:
+  Namun komponen frontend `ComparisonTable.tsx` mencari properti `c.required_level`:
   ```tsx
   <td className="px-4 py-2.5 text-center text-muted-foreground">{LEVEL_LABELS[c.required_level]}</td>
   ```
-  `LEVEL_LABELS[undefined]` rendered blank. Additionally, `is_override` was never returned in the payload, suppressing the pencil badge `✏`.
-* **Fix Applied**: Updated `FitGap::Engine` to emit both `expected_level` and `required_level`, alongside `is_override: portfolio_skill&.dig(:overridden) || false`. Updated `ComparisonTable.tsx` to handle `c.required_level ?? c.expected_level`. Verified with `ComparisonTable.test.tsx` and `engine_spec.rb`.
+  Sehingga `LEVEL_LABELS[undefined]` menghasilkan tampilan kosong. Selain itu, flag `is_override` tidak pernah disertakan dalam payload, sehingga badge ikon pensil `✏` tidak pernah muncul.
+* **Solusi yang Diterapkan**: Memperbarui `FitGap::Engine` agar mengembalikan `expected_level` sekaligus `required_level`, serta menambahkan `is_override: portfolio_skill&.dig(:overridden) || false`. Memperbarui `ComparisonTable.tsx` agar membaca `c.required_level ?? c.expected_level`. Diverifikasi dengan `ComparisonTable.test.tsx` dan `engine_spec.rb`.
 
 ---
 
-### 4. DAT-02: SkillPicker Drops `skill_id` From Taxonomy (P1 Major)
-* **Category**: Built Wrong
-* **Location**: `web/src/components/assessment/SkillPicker.tsx:41` & `web/src/types/index.ts:19`
-* **One-Line Impact**: Skills selected from the standardized B7 taxonomy lose their unique ID, breaking traceability and automated matching.
-* **Evidence & Repro**:
-  In `types/index.ts`, `AssessmentSkill.skill_id` was typed as `number`, while `SkillTaxonomy.skill_id` was `string` (e.g. `"sk-eng-001"`). To silence TypeScript compiler warnings, the original developer forced:
+### 4. DAT-02: SkillPicker Menghapus `skill_id` Taksonomi (P1 Major)
+* **Kategori**: Salah Bangun (*Built Wrong*)
+* **Lokasi**: `web/src/components/assessment/SkillPicker.tsx:41` & `web/src/types/index.ts:19`
+* **Dampak Ringkas**: Skill yang dipilih dari taksonomi B7 kehilangan identifier uniknya, merusak keterlacakan dan pencocokan otomatis ke sistem analisis.
+* **Bukti & Reproduksi**:
+  Pada `types/index.ts`, `AssessmentSkill.skill_id` dideklarasikan bertipe `number`, sedangkan ID pada taksonomi bertipe `string` (misal `"sk-eng-001"`). Agar kompilasi TypeScript tidak memunculkan error, developer sebelumnya memaksanya menjadi:
   ```typescript
   // SkillPicker.tsx
   const handleSelect = (s: SkillTaxonomy) => {
     onSelect({
-      skill_id: undefined, // forced to undefined!
+      skill_id: undefined, // dipaksa undefined agar tidak error type!
       skill_label: s.skill_label,
       ...
     });
   };
   ```
-* **Fix Applied**: Corrected `skill_id?: string` in `types/index.ts` across `AssessmentSkill`, `VacancySkill`, `PortfolioSkill`, and `CoverageSkill`. Updated `SkillPicker.tsx` to preserve `skill_id: s.skill_id`. Verified with `SkillPicker.test.tsx`.
+* **Solusi yang Diterapkan**: Mengoreksi tipe data menjadi `skill_id?: string` di `types/index.ts` untuk `AssessmentSkill`, `VacancySkill`, `PortfolioSkill`, dan `CoverageSkill`. Memperbarui `SkillPicker.tsx` agar tetap mempertahankan nilai asli `skill_id: s.skill_id`. Diverifikasi dengan `SkillPicker.test.tsx`.
 
 ---
 
-### 5. SEC-02: Multi-Tenant Portfolio IDOR Vulnerability (P1 Major)
-* **Category**: Built Wrong
-* **Location**: `api/app/controllers/api/v1/portfolios_controller.rb:82, 104, 130` & `portfolio_skills_controller.rb:51`
-* **One-Line Impact**: Any authenticated assessor from Company A can view, regenerate, and export interview portfolios of candidates from Company B by supplying their ID.
-* **Evidence & Repro**:
-  While `Assessment`, `Session`, and `Vacancy` include `TenantScoped`, `Portfolio` does not carry a `tenant_id` column. Lookups in `PortfoliosController` executed raw `Portfolio.find(params[:id])` without validating that the session belonged to `current_tenant_id`.
-* **Fix Applied**: Updated `PortfoliosController#set_portfolio` and `PortfolioSkillsController#set_portfolio_skill` to scope lookups through `Portfolio.joins(:session).where(sessions: { tenant_id: current_tenant_id })`. Verified with `spec/requests/api/v1/portfolios_spec.rb`.
+### 5. SEC-02: Kerentanan IDOR Portfolio Multi-Tenant (P1 Major)
+* **Kategori**: Celah Keamanan / Salah Bangun (*Security Defect*)
+* **Lokasi**: `api/app/controllers/api/v1/portfolios_controller.rb:82, 104, 130` & `portfolio_skills_controller.rb:51`
+* **Dampak Ringkas**: Pengguna terautentikasi dari Perusahaan A dapat melihat, men-generate ulang, dan mengekspor portfolio kandidat milik Perusahaan B hanya dengan memasukkan ID-nya.
+* **Bukti & Reproduksi**:
+  Meskipun model `Assessment`, `Session`, dan `Vacancy` menggunakan concern `TenantScoped`, model `Portfolio` tidak memiliki kolom `tenant_id` langsung. Pencarian di `PortfoliosController` mengeksekusi `Portfolio.find(params[:id])` tanpa validasi bahwa sesi tersebut berada di dalam `current_tenant_id`.
+* **Solusi yang Diterapkan**: Memperbarui `PortfoliosController#set_portfolio` dan `PortfolioSkillsController#set_portfolio_skill` agar pencarian dibatasi melalui relasi tenant: `Portfolio.joins(:session).where(sessions: { tenant_id: current_tenant_id })`. Diverifikasi dengan `spec/requests/api/v1/portfolios_spec.rb`.
 
 ---
 
-### 6. LLM-01: Discovered Skills Excluded from Priority Probing (P2 Minor)
-* **Category**: Built Wrong (PRD Divergence)
-* **Location**: `api/app/services/coverage/map_injector.rb:104`
-* **One-Line Impact**: When a candidate reveals an unscripted skill, the Gemini Live interviewer fails to receive the nudge to explore it, violating PRD-01 Section 5.
-* **Evidence & Repro**:
-  `MapInjector#priority_next` only evaluated configured skills, ignoring discovered skills in state `initiated`.
-* **Fix Applied**: Updated `priority_next(configured_maps, discovered_maps)` to return `'discovered'` when any discovered skill is `initiated`.
+### 6. LLM-01: Discovered Skills Tidak Masuk Arahan Prioritas (P2 Minor)
+* **Kategori**: Penyimpangan Spesifikasi PRD
+* **Lokasi**: `api/app/services/coverage/map_injector.rb:104`
+* **Dampak Ringkas**: Saat kandidat mengungkap keahlian baru di luar skrip, pewawancara AI Gemini Live tidak mendapatkan arahan prioritas untuk mendalami skill tersebut, melanggar PRD-01 Bagian 5.
+* **Solusi yang Diterapkan**: Memperbarui logika `priority_next` agar mengembalikan status `'discovered'` ketika ada skill yang baru terdeteksi dengan status `initiated`.
 
 ---
 
-### 7. UI-01: Missing `scope_exclude` Input in `CustomSkillForm.tsx` (P2 Minor)
-* **Category**: Missing Spec / Incomplete UI
-* **Location**: `web/src/components/assessment/CustomSkillForm.tsx`
-* **One-Line Impact**: Assessors creating custom skills cannot define "What does NOT count", increasing risk of model halluncination or off-target questions.
-* **Fix Applied**: Added `scope_exclude` textarea to `CustomSkillForm.tsx`.
+### 7. UI-01: Input `scope_exclude` Hilang pada `CustomSkillForm.tsx` (P2 Minor)
+* **Kategori**: Spek Antarmuka Kurang Lengkap
+* **Lokasi**: `web/src/components/assessment/CustomSkillForm.tsx`
+* **Dampak Ringkas**: Assessor yang menambahkan custom skill tidak bisa mengisi batasan "Apa yang tidak termasuk", meningkatkan risiko halusinasi pertanyaan oleh AI.
+* **Solusi yang Diterapkan**: Menambahkan form textarea `scope_exclude` pada komponen `CustomSkillForm.tsx`.
 
 ---
 
-## Systemic Patterns Behind Recurring Issues
+## Pola Sistemik di Balik Cacat yang Berulang
 
-Our analysis revealed three major systemic failure modes:
-1. **Frontend-Backend Contract Drift without Schema Validation**:  
-   TypeScript types and Rails models/serializers were written independently without contract testing or shared schemas (e.g. OpenAPI/Zod schemas). This led to `expected_level` vs `required_level` breakage and `skill_id: number` vs `string` type-coercion bypasses.
-2. **Incomplete Multi-Tenancy Strategy**:  
-   Multi-tenancy was bolted onto top-level models (`Assessment`, `Vacancy`) via `TenantScoped`, but intermediate/leaf models (`Portfolio`, `PortfolioSkill`) lacked tenant scoping, resulting in IDOR vulnerabilities across relational boundaries.
-3. **Workflow Softness (Ghost Specs & Untested Commits)**:  
-   Features such as `SkillPicker`, `ComparisonTable`, and `CustomSkillForm` were committed without unit tests or acceptance criteria checks. When developers encountered TypeScript errors, they muted them (e.g., setting `skill_id: undefined`) rather than fixing the contract.
+Analisis menyeluruh mengungkap tiga pola kegagalan sistemik:
+1. **Penyimpangan Kontrak Frontend-Backend Tanpa Validasi Skema**:  
+   Tipe TypeScript dan model/serializer Rails dibuat terpisah tanpa pengujian kontrak bersama (seperti skema OpenAPI atau Zod). Ini menjadi akar masalah perbedaan `expected_level` vs `required_level` dan pemaksaan `skill_id: undefined`.
+2. **Implementasi Multi-Tenancy yang Tidak Tuntas**:  
+   Isolasi tenant hanya ditempelkan pada model tingkat atas (`Assessment`, `Vacancy`), tetapi model relasi turunannya (`Portfolio`, `PortfolioSkill`) terlewat dari penyaringan tenant.
+3. **Disiplin Rekayasa yang Lemah (Tanpa Tes Otomatis)**:  
+   Banyak fitur penting di-commit tanpa pengujian unit atau kriteria penerimaan. Ketika menghadapi error tipe TypeScript, developer memilih menonaktifkan validasi daripada menyelaraskan kontrak datanya.
 
 ---
 
-## Recommendations & Next Steps
+## Rekomendasi & Langkah Lanjutan
 
-1. **Gate Development with Definition of Ready**: Enforce our GitHub Actions Workflow Gate (`.github/workflows/quality-gate.yml`) so no PR merges without linked specs and automated tests.
-2. **Adopt Shared Contract Typing**: Generate TypeScript definitions directly from Rails database schema / serializers.
-3. **Automate Multi-Tenant Boundary Tests**: Add automated rspec tenant-isolation tests for all current and future endpoints.
+1. **Wajibkan Definition of Ready (DoR)**: Pasang gerbang otomatis GitHub Actions (`.github/workflows/quality-gate.yml`) agar tidak ada kode yang bisa di-merge tanpa tiket acuan, kriteria sukses, dan tes otomatis.
+2. **Sinkronisasi Skema Tipe**: Gunakan generator otomatis agar antarmuka TypeScript diturunkan langsung dari serializer/database Rails.
+3. **Pengujian Batas Multi-Tenant Otomatis**: Buat suite tes RSpec isolasi tenant otomatis untuk seluruh endpoint baru di masa mendatang.
