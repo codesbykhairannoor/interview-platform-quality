@@ -147,6 +147,40 @@ function runGate() {
         errors.push('Missing automated tests. Code changes must include or update test files (Vitest or RSpec).');
     }
 
+    // Check 5: PR Size Guardrail (DangerJS / RWA Standard)
+    try {
+        const target = pr.base || 'HEAD~1';
+        const numstat = execSync(`git diff --numstat ${target} HEAD`, { encoding: 'utf8' }).trim();
+        let totalLinesChanged = 0;
+        numstat.split('\n').forEach(line => {
+            const [add, del] = line.split('\t');
+            if (add !== '-' && del !== '-') {
+                totalLinesChanged += (parseInt(add, 10) || 0) + (parseInt(del, 10) || 0);
+            }
+        });
+        if (totalLinesChanged > 500) {
+            console.warn(` [WARN] Large change detected (${totalLinesChanged} lines changed). Consider modularizing changes under 500 lines.`);
+        }
+    } catch {}
+
+    // Surface rich summary in GitHub Actions if environment supports it
+    if (process.env.GITHUB_STEP_SUMMARY) {
+        try {
+            const summaryTable = [
+                '### Definition of Ready (DoR) Gate Evaluation',
+                '',
+                '| Gate Criterion | Status | Verification Detail |',
+                '| :--- | :---: | :--- |',
+                `| **Spec / PRD Reference** | ${hasSpec ? '🟢 PASS' : '🔴 FAIL'} | ${hasSpec ? 'Specification linked' : 'Missing specification link'} |`,
+                `| **Acceptance Criteria** | ${hasAc ? '🟢 PASS' : '🔴 FAIL'} | ${hasAc ? 'Acceptance criteria / test scenarios defined' : 'Missing acceptance criteria'} |`,
+                `| **Design / Solution Plan** | ${hasPlan ? '🟢 PASS' : '🔴 FAIL'} | ${hasPlan ? 'Solution approach documented' : 'Missing solution plan'} |`,
+                `| **Automated Test Net** | ${(testFiles.length > 0 || isDocOnly) ? '🟢 PASS' : '🔴 FAIL'} | ${isDocOnly ? 'Documentation-only change' : `${testFiles.length} test file(s) modified`} |`,
+                '',
+            ].join('\n');
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summaryTable);
+        } catch {}
+    }
+
     // Print Results
     passed.forEach(p => console.log(` [PASS] ${p}`));
     console.log('');
